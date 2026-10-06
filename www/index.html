@@ -21,6 +21,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script src="ads.js"></script>
 <script>
 (() => {
 'use strict';
@@ -58,7 +59,7 @@ addEventListener('resize', resize);
 
 /* ---------- ads bridge (test mode by default) ---------- */
 const Ads = window.AdsBridge || {
-  showRewarded(onReward) { startFakeAd('Rewarded ad (test)', onReward); },
+  showRewarded(onReward, onFail) { startFakeAd('Rewarded ad (test)', onReward); },
   showInterstitial(done) { startFakeAd('Ad (test)', done); }
 };
 
@@ -107,6 +108,7 @@ let bullets = [], eb = [], enemies = [], parts = [], pups = [], texts = [];
 let breakT = 0, toSpawn = 0, spawnT = 0, bossPending = false, shake = 0, overT = 0;
 let adT = 0, adCb = null, adLabel = '', shotCount = 0, clearBonusT = 0;
 let buttons = [];
+let toast = '', toastT = 0;
 
 function resetGame() {
   score = 0; wave = 0; usedRevive = false; newBest = false;
@@ -194,6 +196,14 @@ function revive() {
   state = 'play';
 }
 function startFakeAd(label, cb) { state = 'ad'; adT = 2.5; adCb = cb; adLabel = label; }
+function playRewarded() {
+  state = 'ad'; adLabel = 'Loading ad...'; adT = 99; adCb = null;
+  Ads.showRewarded(() => revive(), () => { state = 'over'; overT = 0; toast = 'Ad not available right now. Try again.'; toastT = 3; });
+}
+function playInterstitialThen(next) {
+  state = 'ad'; adLabel = 'Loading ad...'; adT = 99; adCb = null;
+  Ads.showInterstitial(() => next());
+}
 
 /* ---------- input ---------- */
 const ptr = { x: 0, y: 0, down: false };
@@ -227,6 +237,7 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------- update ---------- */
 function update(dt) {
+  toastT = Math.max(0, toastT - dt);
   // stars
   const sp = state === 'play' ? 1 : 0.4;
   for (const s of stars) { s.y += s.v * dt * sp; if (s.y > H) { s.y = -2; s.x = rand(0, W); } }
@@ -490,16 +501,17 @@ function drawOver() {
   txt(String(score), W / 2, H * 0.24 + 56, 54, '#ffd166', 'center', '900');
   txt(newBest ? 'New best score' : 'Best ' + best, W / 2, H * 0.24 + 102, 16, newBest ? '#4cc9f0' : 'rgba(255,255,255,0.7)', 'center', '700');
   let y = H * 0.24 + 170;
-  if (!usedRevive) { button('Watch ad to continue', W / 2, y, 250, 56, true, () => { Ads.showRewarded(revive); }); y += 70; }
+  if (!usedRevive) { button('Watch ad to continue', W / 2, y, 250, 56, true, () => { playRewarded(); }); y += 70; }
   button('Play again', W / 2, y, 250, 52, usedRevive, () => {
-    if (gamesPlayed % 3 === 0) Ads.showInterstitial(startGame); else startGame();
+    if (gamesPlayed % 3 === 0) playInterstitialThen(startGame); else startGame();
   });
   y += 62; soundButton(y);
+  if (toastT > 0) txt(toast, W / 2, y + 50, 14, '#ffb4c0', 'center', '600');
 }
 function drawAd() {
   ctx.fillStyle = 'rgba(0,0,0,0.92)'; ctx.fillRect(0, 0, W, H);
   txt(adLabel, W / 2, H * 0.42, 22, '#ffffff', 'center', '800');
-  txt('Continues in ' + Math.max(0, Math.ceil(adT)) + '...', W / 2, H * 0.42 + 36, 16, 'rgba(255,255,255,0.7)', 'center', '500');
+  txt(adT > 10 ? 'Please wait...' : 'Continues in ' + Math.max(0, Math.ceil(adT)) + '...', W / 2, H * 0.42 + 36, 16, 'rgba(255,255,255,0.7)', 'center', '500');
 }
 
 /* ---------- loop ---------- */

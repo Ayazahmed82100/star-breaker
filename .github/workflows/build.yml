@@ -23,8 +23,23 @@ jobs:
       - name: Install packages
         run: npm install
 
+      - name: Bundle the ads code
+        run: npx esbuild src/ads.js --bundle --minify --format=iife --outfile=www/ads.js
+
       - name: Add Android platform
         run: npx cap add android
+
+      - name: Set AdMob App ID in the Android manifest
+        run: |
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          meta = '<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-4491823835774613~5784211037"/>'
+          assert '</application>' in s
+          s = s.replace('</application>', '    ' + meta + '\n    </application>')
+          open(p, 'w', encoding='utf-8').write(s)
+          print('AdMob App ID added to manifest')
+          PY
 
       - name: Sync game files
         run: npx cap sync android
