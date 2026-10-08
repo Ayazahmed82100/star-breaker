@@ -119,9 +119,9 @@ function resetGame() {
 }
 function startGame() { resetGame(); state = 'play'; }
 function startWave(n) {
-  wave = n; breakT = 1.9; spawnT = 0;
+  wave = n; breakT = 1.5; spawnT = 0;
   bossPending = (n % 5 === 0);
-  toSpawn = bossPending ? 4 : 6 + n * 2;
+  toSpawn = bossPending ? 6 : 8 + n * 3;
   sfx.wave();
 }
 
@@ -129,19 +129,19 @@ function startWave(n) {
 function spawnEnemy() {
   const r = Math.random();
   let e;
-  if (wave >= 3 && r < 0.25) {
-    e = { type: 'zig', r: 12, hp: 2, vy: Math.min(60 + wave * 3, 130), col: '#9b7bff', score: 20, bx: rand(60, W - 60), amp: rand(40, 80), ph: rand(0, TAU) };
+  if (wave >= 2 && r < 0.3) {
+    e = { type: 'zig', r: 12, hp: 2 + Math.floor(wave / 5), vy: Math.min(80 + wave * 5, 170), col: '#9b7bff', score: 20, bx: rand(60, W - 60), amp: rand(50, 100), ph: rand(0, TAU), shoot: wave >= 4 ? rand(1.5, 3.5) : 999 };
     e.x = e.bx; e.y = -20;
-  } else if (wave >= 2 && r > 0.82) {
-    e = { type: 'tank', r: 17, hp: 4 + Math.floor(wave / 3), vy: Math.min(40 + wave * 2, 80), col: '#2ec4b6', score: 40, x: rand(40, W - 40), y: -30, shoot: rand(0.8, 1.8) };
+  } else if (wave >= 2 && r > 0.76) {
+    e = { type: 'tank', r: 17, hp: 5 + Math.floor(wave / 2), vy: Math.min(50 + wave * 3, 100), col: '#2ec4b6', score: 40, x: rand(40, W - 40), y: -30, shoot: rand(0.6, 1.4) };
   } else {
-    e = { type: 'scout', r: 11, hp: 1, vy: Math.min(75 + wave * 6, 210), col: '#ff5d73', score: 10, x: rand(30, W - 30), y: -20, vx: rand(-25, 25) };
+    e = { type: 'scout', r: 11, hp: 1 + (wave >= 6 ? 1 : 0), vy: Math.min(100 + wave * 10, 280), col: '#ff5d73', score: 10, x: rand(30, W - 30), y: -20, vx: rand(-35, 35), shoot: wave >= 4 ? rand(1.5, 4) : 999 };
   }
   e.max = e.hp; e.t = 0; e.flash = 0;
   enemies.push(e);
 }
 function spawnBoss() {
-  const hp = 50 + wave * 10;
+  const hp = 70 + wave * 14;
   enemies.push({ type: 'boss', r: 40, hp, max: hp, col: '#f72585', score: 500, x: W / 2, y: -70, t: 0, flash: 0, shoot: 1.5, shoot2: 3 });
 }
 
@@ -158,7 +158,7 @@ function aim(x, y) { return Math.atan2(player.y - y, player.x - x); }
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
 
 function dropPickup(x, y, force) {
-  if (!force && Math.random() > 0.11) return;
+  if (!force && Math.random() > 0.08) return;
   const r = Math.random();
   const type = r < 0.45 ? 'P' : r < 0.75 ? 'S' : 'H';
   pups.push({ x, y, type, t: 0 });
@@ -180,7 +180,7 @@ function killEnemy(e) {
 }
 function hurtPlayer() {
   if (player.inv > 0 || player.shield > 0 || state !== 'play') return;
-  player.lives--; player.wl = Math.max(1, player.wl - 1); player.inv = 1.8;
+  player.lives--; player.wl = Math.max(1, player.wl - 1); player.inv = 1.4;
   boom(player.x, player.y, 30, '#ffd166', 200); shake = 10; sfx.hurt(); buzz(120);
   if (player.lives <= 0) gameOver();
 }
@@ -276,7 +276,7 @@ function update(dt) {
     if (breakT <= 0 && bossPending) { spawnBoss(); bossPending = false; }
   } else {
     spawnT -= dt;
-    if (toSpawn > 0 && spawnT <= 0) { spawnEnemy(); toSpawn--; spawnT = Math.max(0.3, 1.0 - wave * 0.035) + rand(0, 0.35); }
+    if (toSpawn > 0 && spawnT <= 0) { spawnEnemy(); toSpawn--; spawnT = Math.max(0.22, 0.8 - wave * 0.04) + rand(0, 0.25); }
     if (toSpawn === 0 && !bossPending && enemies.length === 0) {
       score += wave * 25; floatText(W / 2, H / 2 - 40, 'Wave clear  +' + wave * 25, '#4cc9f0');
       startWave(wave + 1);
@@ -304,15 +304,19 @@ function update(dt) {
     else if (e.type === 'zig') { e.y += e.vy * dt; e.x = clamp(e.bx + Math.sin(e.t * 2.2 + e.ph) * e.amp, 15, W - 15); }
     else if (e.type === 'tank') {
       e.y += e.vy * dt; e.shoot -= dt;
-      if (e.shoot <= 0 && e.y > 20 && e.y < H - 160) { e.shoot = rand(1.4, 2.4); ebShoot(e.x, e.y + 10, 170, aim(e.x, e.y)); }
+      if (e.shoot <= 0 && e.y > 20 && e.y < H - 160) { e.shoot = rand(1.0, 1.8); ebShoot(e.x, e.y + 10, 200, aim(e.x, e.y)); }
     } else if (e.type === 'boss') {
       if (e.y < 110) e.y += 60 * dt;
       else {
         e.x = W / 2 + Math.sin(e.t * 0.9) * (W / 2 - 60);
         e.shoot -= dt; e.shoot2 -= dt;
-        if (e.shoot <= 0) { e.shoot = Math.max(0.7, 1.3 - wave * 0.02); for (let j = -2; j <= 2; j++) ebShoot(e.x, e.y + 30, 150, Math.PI / 2 + j * 0.28); }
-        if (e.shoot2 <= 0) { e.shoot2 = 2.6; ebShoot(e.x - 26, e.y + 30, 210, aim(e.x - 26, e.y + 30)); ebShoot(e.x + 26, e.y + 30, 210, aim(e.x + 26, e.y + 30)); }
+        if (e.shoot <= 0) { e.shoot = Math.max(0.5, 1.0 - wave * 0.02); for (let j = -2; j <= 2; j++) ebShoot(e.x, e.y + 30, 180, Math.PI / 2 + j * 0.28); }
+        if (e.shoot2 <= 0) { e.shoot2 = 2.0; ebShoot(e.x - 26, e.y + 30, 240, aim(e.x - 26, e.y + 30)); ebShoot(e.x + 26, e.y + 30, 240, aim(e.x + 26, e.y + 30)); }
       }
+    }
+    if ((e.type === 'scout' || e.type === 'zig') && e.shoot !== undefined) {
+      e.shoot -= dt;
+      if (e.shoot <= 0 && e.y > 10 && e.y < H - 200) { e.shoot = rand(2.2, 4); ebShoot(e.x, e.y + 8, Math.min(150 + wave * 4, 240), aim(e.x, e.y)); }
     }
     if (e.y > H + 40) { enemies.splice(i, 1); continue; }
     if (dist(e.x, e.y, player.x, player.y) < e.r + 8) {
