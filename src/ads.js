@@ -21,7 +21,15 @@ if (Capacitor.isNativePlatform()) {
   let initPromise = null;
   const init = () => {
     if (!initPromise) {
-      initPromise = AdMob.initialize({ initializeForTesting: USE_TEST_ADS }).catch(e => console.log('AdMob init failed', e));
+      initPromise = (async () => {
+        try {
+          // Ask for consent only where the law requires it (EEA / UK). Needs a message set up in AdMob > Privacy & messaging.
+          const info = await AdMob.requestConsentInfo();
+          if (info && info.isConsentFormAvailable && info.status === 'REQUIRED') await AdMob.showConsentForm();
+        } catch (e) { console.log('Consent step skipped', e); }
+        try { await AdMob.initialize({ initializeForTesting: USE_TEST_ADS }); }
+        catch (e) { console.log('AdMob init failed', e); }
+      })();
     }
     return initPromise;
   };

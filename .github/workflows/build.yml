@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK and AAB
 
 on:
   push:
@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # becomes 'true' only after you add the signing secrets in GitHub (Settings > Secrets and variables > Actions)
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,16 +32,30 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Set AdMob App ID in the Android manifest
+      - name: Set AdMob App ID in the Android project
         run: |
           python3 - <<'PY'
+          APP_ID = 'ca-app-pub-4491823835774613~5784211037'
+
+          # 1) manifest: declare the App ID (tools:replace avoids a clash with the plugin's own entry)
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p, encoding='utf-8').read()
-          meta = '<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-4491823835774613~5784211037"/>'
+          if 'xmlns:tools' not in s:
+              s = s.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+          meta = ('<meta-data tools:replace="android:value" '
+                  'android:name="com.google.android.gms.ads.APPLICATION_ID" '
+                  'android:value="' + APP_ID + '"/>')
           assert '</application>' in s
-          s = s.replace('</application>', '    ' + meta + '\n    </application>')
+          s = s.replace('</application>', '    ' + meta + '\n    </application>', 1)
           open(p, 'w', encoding='utf-8').write(s)
-          print('AdMob App ID added to manifest')
+
+          # 2) strings.xml: the plugin reads admob_app_id
+          q = 'android/app/src/main/res/values/strings.xml'
+          t = open(q, encoding='utf-8').read()
+          if 'name="admob_app_id"' not in t:
+              t = t.replace('</resources>', '    <string name="admob_app_id" translatable="false">' + APP_ID + '</string>\n</resources>', 1)
+              open(q, 'w', encoding='utf-8').write(t)
+          print('AdMob App ID added to manifest and strings.xml')
           PY
 
       - name: Sync game files
@@ -47,8 +64,35 @@ jobs:
       - name: Build debug APK
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: star-breaker-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Build release bundle (AAB)
+        if: env.HAS_KEYSTORE == 'true'
+        run: cd android && ./gradlew bundleRelease
+
+      - name: Sign the bundle
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+          cp android/app/build/outputs/bundle/release/app-release.aab star-breaker-release.aab
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore "$RUNNER_TEMP/upload.keystore" \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+            star-breaker-release.aab "$KEY_ALIAS"
+          rm -f "$RUNNER_TEMP/upload.keystore"
+
+      - name: Upload signed AAB
+        if: env.HAS_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-breaker-release-aab
+          path: star-breaker-release.aab

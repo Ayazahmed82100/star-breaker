@@ -29,7 +29,7 @@
 /* ---------- setup ---------- */
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
-let W = 360, H = 640, scale = 1, dpr = 1;
+let W = 360, H = 640, scale = 1, dpr = 1, safeTop = 0, safeBottom = 0;
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -44,16 +44,31 @@ function initStars() {
     stars.push({ x: rand(0, W), y: rand(0, H), s: 0.6 + layer * 0.6, v: 14 + layer * 26 });
   }
 }
+function readSafeArea(px) {
+  // Phones draw the app behind the status bar / gesture bar. Measure those areas so the HUD stays visible.
+  try {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:0;visibility:hidden;pointer-events:none;' +
+      'padding-top:max(env(safe-area-inset-top,0px),var(--safe-area-inset-top,0px));' +
+      'padding-bottom:max(env(safe-area-inset-bottom,0px),var(--safe-area-inset-bottom,0px));';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    safeTop = (parseFloat(cs.paddingTop) || 0) / px;
+    safeBottom = (parseFloat(cs.paddingBottom) || 0) / px;
+    document.body.removeChild(probe);
+  } catch (e) { safeTop = 0; safeBottom = 0; }
+}
 function resize() {
   const cw = innerWidth, ch = innerHeight;
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   scale = Math.min(cw / 360, ch / 560);
   W = cw / scale; H = ch / scale;
+  readSafeArea(scale);
   cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
   cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
   initStars();
-  player.x = clamp(player.x, 20, W - 20); player.y = clamp(player.y, 60, H - 30);
-  player.tx = clamp(player.tx, 20, W - 20); player.ty = clamp(player.ty, 60, H - 30);
+  player.x = clamp(player.x, 20, W - 20); player.y = clamp(player.y, 60 + safeTop, H - 30 - safeBottom);
+  player.tx = clamp(player.tx, 20, W - 20); player.ty = clamp(player.ty, 60 + safeTop, H - 30 - safeBottom);
 }
 addEventListener('resize', resize);
 
@@ -254,7 +269,7 @@ function update(dt) {
   const dx = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
   const dy = (keys['arrowdown'] || keys['s'] ? 1 : 0) - (keys['arrowup'] || keys['w'] ? 1 : 0);
   if (dx || dy) { player.tx += dx * 340 * dt; player.ty += dy * 340 * dt; }
-  player.tx = clamp(player.tx, 18, W - 18); player.ty = clamp(player.ty, 70, H - 30);
+  player.tx = clamp(player.tx, 18, W - 18); player.ty = clamp(player.ty, 70 + safeTop, H - 30 - safeBottom);
   const k = Math.min(1, 14 * dt);
   player.x += (player.tx - player.x) * k; player.y += (player.ty - player.y) * k;
   player.inv = Math.max(0, player.inv - dt); player.shield = Math.max(0, player.shield - dt);
@@ -471,14 +486,15 @@ function draw() {
   else if (state === 'ad') drawAd();
 }
 function drawHud() {
-  txt(String(score), 16, 26, 24, '#ffffff', 'left', '800');
-  txt('Best ' + best, 16, 48, 12, 'rgba(255,255,255,0.6)', 'left', '600');
-  txt('Wave ' + wave, W / 2, 26, 15, 'rgba(255,255,255,0.8)', 'center', '700');
-  for (let i = 0; i < player.lives; i++) txt('\u2665', W - 18 - i * 20, 26, 18, '#ff5d73', 'center', '700');
+  const t = safeTop;
+  txt(String(score), 16, 26 + t, 24, '#ffffff', 'left', '800');
+  txt('Best ' + best, 16, 48 + t, 12, 'rgba(255,255,255,0.6)', 'left', '600');
+  txt('Wave ' + wave, W / 2, 26 + t, 15, 'rgba(255,255,255,0.8)', 'center', '700');
+  for (let i = 0; i < player.lives; i++) txt('\u2665', W - 18 - i * 20, 26 + t, 18, '#ff5d73', 'center', '700');
   const boss = enemies.find(e => e.type === 'boss');
   if (boss && boss.y > 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(20, 64, W - 40, 6);
-    ctx.fillStyle = '#f72585'; ctx.fillRect(20, 64, (W - 40) * clamp(boss.hp / boss.max, 0, 1), 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(20, 64 + t, W - 40, 6);
+    ctx.fillStyle = '#f72585'; ctx.fillRect(20, 64 + t, (W - 40) * clamp(boss.hp / boss.max, 0, 1), 6);
   }
 }
 function soundButton(cy) { button(muted ? 'Sound off' : 'Sound on', W / 2, cy, 150, 44, false, () => { muted = !muted; }); }
